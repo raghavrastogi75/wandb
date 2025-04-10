@@ -16,6 +16,7 @@
 #     "pydub",
 #     "sounddevice",
 #     "openai[realtime]",
+#     "pandas",
 # ]
 #
 # [tool.uv.sources]
@@ -25,7 +26,10 @@ from __future__ import annotations
 
 import base64
 import asyncio
-from typing import Any, cast
+import json
+import uuid
+import pandas as pd
+from typing import Any, cast, Dict, Optional
 from typing_extensions import override
 
 from textual import events
@@ -40,9 +44,97 @@ from openai.types.beta.realtime.session import Session
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 
 
+def load_dummy_dataframe() -> pd.DataFrame:
+    """Load a dummy dataframe with sample data."""
+    data = {
+        'date': pd.date_range(start='2023-01-01', periods=10, freq='D'),
+        'sales': [100, 150, 200, 120, 180, 210, 250, 300, 270, 220],
+        'product': ['A', 'B', 'A', 'C', 'B', 'A', 'C', 'B', 'A', 'C'],
+        'region': ['North', 'South', 'East', 'West', 'North', 'South', 'East', 'West', 'North', 'South'],
+        'customer_satisfaction': [4.5, 4.2, 4.7, 3.9, 4.1, 4.8, 4.0, 4.3, 4.6, 4.2]
+    }
+    return pd.DataFrame(data)
+
+
+def get_dataframe_info(df: pd.DataFrame) -> Dict[str, Any]:
+    """Get structured information about the DataFrame."""
+    return {
+        'columns': list(df.columns),
+        'shape': df.shape,
+        'sample_data': df.head(3).to_dict(orient='records'),
+        'summary_stats': df.describe().to_dict(),
+        'product_counts': df['product'].value_counts().to_dict(),
+        'region_counts': df['region'].value_counts().to_dict(),
+        'total_sales': df['sales'].sum(),
+        'avg_satisfaction': df['customer_satisfaction'].mean()
+    }
+
+
+def query_dataframe(df: pd.DataFrame, query_args: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute queries on the DataFrame based on the provided arguments."""
+    query_type = query_args.get('query_type', 'general')
+    
+    if query_type == 'filter':
+        column = query_args.get('column')
+        value = query_args.get('value')
+        operator = query_args.get('operator', '==')
+        
+        if column and value is not None:
+            if operator == '==':
+                result_df = df[df[column] == value]
+            elif operator == '>':
+                result_df = df[df[column] > value]
+            elif operator == '<':
+                result_df = df[df[column] < value]
+            elif operator == 'contains':
+                result_df = df[df[column].astype(str).str.contains(str(value))]
+            else:
+                return {"error": f"Unsupported operator: {operator}"}
+                
+            return {
+                "filtered_data": result_df.to_dict(orient='records'),
+                "count": len(result_df)
+            }
+    
+    elif query_type == 'aggregate':
+        column = query_args.get('column')
+        func = query_args.get('function', 'mean')
+        group_by = query_args.get('group_by')
+        
+        if column:
+            if group_by:
+                if func == 'mean':
+                    result = df.groupby(group_by)[column].mean().to_dict()
+                elif func == 'sum':
+                    result = df.groupby(group_by)[column].sum().to_dict()
+                elif func == 'count':
+                    result = df.groupby(group_by)[column].count().to_dict()
+                else:
+                    return {"error": f"Unsupported aggregate function: {func}"}
+                
+                return {
+                    "aggregated_data": result
+                }
+            else:
+                if func == 'mean':
+                    result = df[column].mean()
+                elif func == 'sum':
+                    result = df[column].sum()
+                elif func == 'count':
+                    result = df[column].count()
+                else:
+                    return {"error": f"Unsupported aggregate function: {func}"}
+                
+                return {
+                    "result": result
+                }
+    
+    # Default to returning general info
+    return get_dataframe_info(df)
+
+
 class SessionDisplay(Static):
     """A widget that shows the current session ID."""
-
     session_id = reactive("")
 
     @override
@@ -52,7 +144,6 @@ class SessionDisplay(Static):
 
 class AudioStatusIndicator(Static):
     """A widget that shows the current audio recording status."""
-
     is_recording = reactive(False)
 
     @override
@@ -128,6 +219,9 @@ class RealtimeApp(App[None]):
     connection: AsyncRealtimeConnection | None
     session: Session | None
     connected: asyncio.Event
+    dataframe: pd.DataFrame
+    accumulated_transcript: str
+    pending_function_calls: Dict[str, Dict[str, Any]]
 
     def __init__(self) -> None:
         super().__init__()
@@ -138,6 +232,9 @@ class RealtimeApp(App[None]):
         self.last_audio_item_id = None
         self.should_send_audio = asyncio.Event()
         self.connected = asyncio.Event()
+        self.dataframe = load_dummy_dataframe()
+        self.accumulated_transcript = ""
+        self.pending_function_calls = {}
 
     @override
     def compose(self) -> ComposeResult:
@@ -150,19 +247,72 @@ class RealtimeApp(App[None]):
     async def on_mount(self) -> None:
         self.run_worker(self.handle_realtime_connection())
         self.run_worker(self.send_mic_audio())
+        
+        # Display initial dataframe information
+        bottom_pane = self.query_one("#bottom-pane", RichLog)
+        bottom_pane.write("Loaded sample DataFrame with the following columns:")
+        bottom_pane.write(f"{', '.join(self.dataframe.columns)}")
+        bottom_pane.write("\nSample data:")
+        bottom_pane.write(str(self.dataframe.head(3)))
+        bottom_pane.write("\nAsk questions about this data by pressing K and speaking.")
 
     async def handle_realtime_connection(self) -> None:
         async with self.client.beta.realtime.connect(model="gpt-4o-realtime-preview") as conn:
             self.connection = conn
             self.connected.set()
 
-            # note: this is the default and can be omitted
-            # if you want to manually handle VAD yourself, then set `'turn_detection': None`
-            await conn.session.update(session={"turn_detection": {"type": "server_vad"}})
+            # Configure session with data query function and server VAD
+            await conn.session.update(session={
+                "turn_detection": {"type": "server_vad"},
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "query_dataframe",
+                        "description": "Query the DataFrame to retrieve information or perform operations.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query_type": {
+                                    "type": "string",
+                                    "enum": ["general", "filter", "aggregate"],
+                                    "description": "Type of query to perform"
+                                },
+                                "column": {
+                                    "type": "string",
+                                    "description": "Column to query"
+                                },
+                                "value": {
+                                    "type": ["string", "number", "boolean"],
+                                    "description": "Value to filter by (for filter queries)"
+                                },
+                                "operator": {
+                                    "type": "string",
+                                    "enum": ["==", ">", "<", "contains"],
+                                    "description": "Comparison operator (for filter queries)"
+                                },
+                                "function": {
+                                    "type": "string",
+                                    "enum": ["mean", "sum", "count"],
+                                    "description": "Aggregation function (for aggregate queries)"
+                                },
+                                "group_by": {
+                                    "type": "string",
+                                    "description": "Column to group by (for aggregate queries)"
+                                }
+                            },
+                            "required": ["query_type"]
+                        }
+                    }
+                ],
+                "tool_choice": "auto"
+            })
 
             acc_items: dict[str, Any] = {}
+            user_inputs: dict[str, str] = {}
 
             async for event in conn:
+                bottom_pane = self.query_one("#bottom-pane", RichLog)
+
                 if event.type == "session.created":
                     self.session = event.session
                     session_display = self.query_one(SessionDisplay)
@@ -173,6 +323,14 @@ class RealtimeApp(App[None]):
                 if event.type == "session.updated":
                     self.session = event.session
                     continue
+                
+                if event.type == "error":
+                    # Fix: Access error message correctly through the error attribute
+                    if hasattr(event, 'error') and hasattr(event.error, 'message'):
+                        bottom_pane.write(f"\n[red]Error: {event.error.message}[/red]")
+                    else:
+                        bottom_pane.write(f"\n[red]Error occurred: {event}[/red]")
+                    continue
 
                 if event.type == "response.audio.delta":
                     if event.item_id != self.last_audio_item_id:
@@ -182,6 +340,75 @@ class RealtimeApp(App[None]):
                     bytes_data = base64.b64decode(event.delta)
                     self.audio_player.add_data(bytes_data)
                     continue
+                    
+                if event.type == "input.speech_text.delta":
+                    try:
+                        text = user_inputs.get(event.item_id, "")
+                        user_inputs[event.item_id] = text + event.delta
+                    except KeyError:
+                        user_inputs[event.item_id] = event.delta
+                    
+                    # Process completed speech when "is_final" is True
+                    if event.is_final:
+                        full_text = user_inputs.get(event.item_id, "")
+                        bottom_pane.write(f"\nYou asked: {full_text}")
+                
+                # Function calling handling - fixed to work with actual event structure
+                if event.type == "response.function_call_arguments.delta":
+                    if not hasattr(event, 'call_id') or not event.call_id:
+                        continue
+                    
+                    call_id = event.call_id
+                    if call_id not in self.pending_function_calls:
+                        self.pending_function_calls[call_id] = {
+                            'arguments': event.delta,
+                            # Don't try to get name from the event - we'll get it from response.done
+                        }
+                    else:
+                        self.pending_function_calls[call_id]['arguments'] += event.delta
+                
+                if event.type == "response.done":
+                    # Check if there's a function call in the output
+                    if hasattr(event, 'response') and hasattr(event.response, 'output'):
+                        for output_item in event.response.output:
+                            if hasattr(output_item, 'type') and output_item.type == 'function_call':
+                                call_id = output_item.call_id
+                                func_name = output_item.name
+                                
+                                # Try to parse arguments either from the pending calls or directly from output_item
+                                try:
+                                    if call_id in self.pending_function_calls and 'arguments' in self.pending_function_calls[call_id]:
+                                        arguments_str = self.pending_function_calls[call_id]['arguments']
+                                        arguments = json.loads(arguments_str)
+                                    else:
+                                        arguments = json.loads(output_item.arguments)
+                                    
+                                    bottom_pane.write(f"\nProcessing query: {arguments}")
+                                    
+                                    # Execute the function
+                                    if func_name == 'query_dataframe':
+                                        result = query_dataframe(self.dataframe, arguments)
+                                        
+                                        # Send function results back to model
+                                        await conn.send({
+                                            "type": "conversation.item.create",
+                                            "event_id": str(uuid.uuid4()),
+                                            "item": {
+                                                "type": "function_call_output",
+                                                "call_id": call_id,
+                                                "output": json.dumps(result)
+                                            }
+                                        })
+                                        
+                                        # Generate a response with the function output
+                                        await conn.send({
+                                            "type": "response.create",
+                                            "event_id": str(uuid.uuid4())
+                                        })
+                                except json.JSONDecodeError:
+                                    bottom_pane.write(f"\n[red]Error parsing function arguments: Invalid JSON[/red]")
+                                except Exception as e:
+                                    bottom_pane.write(f"\n[red]Error processing function call: {str(e)}[/red]")
 
                 if event.type == "response.audio_transcript.delta":
                     try:
@@ -192,9 +419,18 @@ class RealtimeApp(App[None]):
                         acc_items[event.item_id] = text + event.delta
 
                     # Clear and update the entire content because RichLog otherwise treats each delta as a new line
-                    bottom_pane = self.query_one("#bottom-pane", RichLog)
                     bottom_pane.clear()
                     bottom_pane.write(acc_items[event.item_id])
+                    continue
+
+                if event.type == "input_audio_buffer.speech_started":
+                    status_indicator = self.query_one(AudioStatusIndicator)
+                    status_indicator.is_recording = True
+                    continue
+
+                if event.type == "input_audio_buffer.speech_stopped":
+                    status_indicator = self.query_one(AudioStatusIndicator)
+                    status_indicator.is_recording = False
                     continue
 
     async def _get_connection(self) -> AsyncRealtimeConnection:
@@ -234,7 +470,10 @@ class RealtimeApp(App[None]):
 
                 connection = await self._get_connection()
                 if not sent_audio:
-                    asyncio.create_task(connection.send({"type": "response.cancel"}))
+                    await connection.send({
+                        "type": "response.cancel", 
+                        "event_id": str(uuid.uuid4())
+                    })
                     sent_audio = True
 
                 await connection.input_audio_buffer.append(audio=base64.b64encode(cast(Any, data)).decode("utf-8"))
@@ -274,6 +513,13 @@ class RealtimeApp(App[None]):
             else:
                 self.should_send_audio.set()
                 status_indicator.is_recording = True
+                
+                # Clear any previous audio buffer when starting new recording
+                conn = await self._get_connection()
+                await conn.send({
+                    "type": "input_audio_buffer.clear",
+                    "event_id": str(uuid.uuid4())
+                })
 
 
 if __name__ == "__main__":

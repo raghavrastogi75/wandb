@@ -31,6 +31,10 @@ def audio_to_pcm16_base64(audio_bytes: bytes) -> bytes:
 
 
 class AudioPlayerAsync:
+    """
+    A simple asynchronous audio player for realtime audio streaming.
+    """
+    
     def __init__(self):
         self.queue = []
         self.lock = threading.Lock()
