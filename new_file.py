@@ -44,7 +44,8 @@ from openai.types.beta.realtime.session import Session
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 
 # Import data functions from the new module
-from data_utils import load_dummy_dataframe, get_dataframe_info, query_dataframe
+# from data_utils import load_dummy_dataframe, get_dataframe_info, query_dataframe, get_tools_schema
+from data_utils_1 import load_dummy_dataframe, get_dataframe_info, query_dataframe, get_tools_schema
 
 
 class SessionDisplay(Static):
@@ -175,51 +176,13 @@ class RealtimeApp(App[None]):
             self.connection = conn
             self.connected.set()
 
-            # Configure session with data query function and server VAD
+            tools_schema = get_tools_schema()
             await conn.session.update(session={
                 "turn_detection": {"type": "server_vad"},
-                "tools": [
-                    {
-                        "type": "function",
-                        "name": "query_dataframe",
-                        "description": "Query the DataFrame to retrieve information or perform operations.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "query_type": {
-                                    "type": "string",
-                                    "enum": ["general", "filter", "aggregate"],
-                                    "description": "Type of query to perform"
-                                },
-                                "column": {
-                                    "type": "string",
-                                    "description": "Column to query"
-                                },
-                                "value": {
-                                    "type": ["string", "number", "boolean"],
-                                    "description": "Value to filter by (for filter queries)"
-                                },
-                                "operator": {
-                                    "type": "string",
-                                    "enum": ["==", ">", "<", "contains"],
-                                    "description": "Comparison operator (for filter queries)"
-                                },
-                                "function": {
-                                    "type": "string",
-                                    "enum": ["mean", "sum", "count"],
-                                    "description": "Aggregation function (for aggregate queries)"
-                                },
-                                "group_by": {
-                                    "type": "string",
-                                    "description": "Column to group by (for aggregate queries)"
-                                }
-                            },
-                            "required": ["query_type"]
-                        }
-                    }
-                ],
+                "tools": [tools_schema],
                 "tool_choice": "auto"
             })
+
 
             acc_items: dict[str, Any] = {}
             user_inputs: dict[str, str] = {}
