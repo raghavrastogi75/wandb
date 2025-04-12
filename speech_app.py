@@ -44,8 +44,8 @@ from openai.types.beta.realtime.session import Session
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 
 # Import data functions from the new module
-# from data_utils import load_dummy_dataframe, get_dataframe_info, query_dataframe, get_tools_schema
-from data_utils_1 import load_dummy_dataframe, get_dataframe_info, query_dataframe, get_tools_schema
+from data_utils import load_dummy_dataframe, get_dataframe_info, query_dataframe, get_tools_schema
+# from data_utils_1 import load_dummy_dataframe, get_dataframe_info, query_dataframe, get_tools_schema
 
 
 class SessionDisplay(Static):
