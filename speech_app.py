@@ -329,7 +329,8 @@ class RealtimeApp(App[None]):
                                         # Wrap the function call with Weave attributes for better tracing
                                         with weave.attributes({'function_call': func_name, 'arguments': arguments}):
                                             result = query_dataframe(self.dataframe, arguments)
-                                            log_conversation_turn("function_result", json.dumps(result))
+                                            log_conversation_turn("arguments", arguments)
+                                            log_conversation_turn("result", result)
                                         # Send function results back to model
                                         await conn.send({
                                             "type": "conversation.item.create",
