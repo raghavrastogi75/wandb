@@ -36,13 +36,16 @@ from typing_extensions import override
 from textual import events
 from audio_util import CHANNELS, SAMPLE_RATE, AudioPlayerAsync
 from textual.app import App, ComposeResult
-from textual.widgets import Button, Static, RichLog
+from textual.widgets import Button, Static, RichLog, Input
 from textual.reactive import reactive
-from textual.containers import Container
+from textual.containers import Container, Horizontal
 
 from openai import AsyncOpenAI
 from openai.types.beta.realtime.session import Session
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
+
+# Import websockets for exception handling
+import websockets.exceptions
 
 # Import Weave for tracing
 import weave
@@ -55,24 +58,35 @@ from data_utils import load_dummy_dataframe, get_dataframe_info, query_dataframe
 import wandb
 
 @weave.op(call_display_name="log_conversation")
-def log_conversation_turn(turn_type: str, content: str) -> None:
+def log_conversation_turn(turn_type: str, content: str, input_type: str = "voice") -> None:
     """Log conversation turns for tracing with Weave.
     
     Args:
         turn_type: Type of turn ("user_query" or "assistant_response")
         content: The text content of the turn
+        input_type: The type of input ("voice" or "text")
     """
     # Make sure wandb is initialized
     if wandb.run is None:
         wandb.init(project="realtime-voice-app", name=f"conversation-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}")
     
     # Log the conversation turn with the standard wandb log method
-    # wandb.log({
-    #     "turn_type": turn_type,
-    #     "timestamp": datetime.datetime.now().isoformat(),
-    #     "content_length": len(content),
-    #     "content": content
-    # })
+    wandb.log({
+        "turn_type": turn_type,
+        "input_type": input_type,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "content_length": len(content),
+        "content": content
+    })
+    
+    # Add trace attributes for better querying
+    weave.attributes({
+        "turn_type": turn_type,
+        "input_type": input_type,
+        "content_length": len(content),
+        "timestamp": datetime.datetime.now().isoformat()
+    })
+    
     return content
 
 class SessionDisplay(Static):
@@ -111,9 +125,11 @@ class RealtimeApp(App[None]):
         }
 
         #input-container {
-            height: 5;  /* Explicit height for input container */
+            height: 10;  /* Explicit height for input container */
             margin: 1 1;
             padding: 1 2;
+            background: #2a2b36;
+            border: solid rgb(91, 164, 91);
         }
 
         Input {
@@ -128,7 +144,7 @@ class RealtimeApp(App[None]):
 
         #bottom-pane {
             width: 100%;
-            height: 82%;  /* Reduced to make room for session display */
+            height: 82%;  /* Reduced to make room for input container */
             border: round rgb(205, 133, 63);
             content-align: center middle;
         }
@@ -184,6 +200,9 @@ class RealtimeApp(App[None]):
         with Container():
             yield SessionDisplay(id="session-display")
             yield AudioStatusIndicator(id="status-indicator")
+            with Horizontal(id="input-container"):
+                yield Input(placeholder="Type your message here...", id="text-input")
+                yield Button("Send", id="send-button", variant="primary")
             yield RichLog(id="bottom-pane", wrap=True, highlight=True, markup=True)
 
     async def on_mount(self) -> None:
@@ -266,7 +285,7 @@ class RealtimeApp(App[None]):
                         bottom_pane.write(f"\nYou asked: {full_text}")
                         
                         # Log the user's query with Weave
-                        log_conversation_turn("user_query", full_text)
+                        log_conversation_turn("user_query", full_text, input_type="voice")
                     
                     # Process completed speech when "is_final" is True
                     if event.is_final:
@@ -383,41 +402,91 @@ class RealtimeApp(App[None]):
         stream.start()
 
         status_indicator = self.query_one(AudioStatusIndicator)
+        bottom_pane = self.query_one("#bottom-pane", RichLog)
 
         try:
             while True:
-                if stream.read_available < read_size:
+                try:
+                    if stream.read_available < read_size:
+                        await asyncio.sleep(0)
+                        continue
+
+                    await self.should_send_audio.wait()
+                    status_indicator.is_recording = True
+
+                    data, _ = stream.read(read_size)
+
+                    try:
+                        connection = await self._get_connection()
+                        if not sent_audio:
+                            try:
+                                await connection.send({
+                                    "type": "response.cancel", 
+                                    "event_id": str(uuid.uuid4())
+                                })
+                                sent_audio = True
+                            except websockets.exceptions.ConnectionClosedOK:
+                                bottom_pane.write("\n[yellow]Connection closed. Attempting to reconnect...[/yellow]")
+                                # Reset connection and wait for reconnection
+                                self.connected.clear()
+                                self.connection = None
+                                self.run_worker(self.handle_realtime_connection())
+                                await self.connected.wait()
+                                connection = await self._get_connection()
+                                # Try again after reconnection
+                                await connection.send({
+                                    "type": "response.cancel", 
+                                    "event_id": str(uuid.uuid4())
+                                })
+                                sent_audio = True
+                            except Exception as e:
+                                bottom_pane.write(f"\n[red]Error canceling response: {str(e)}[/red]")
+
+                        try:
+                            await connection.input_audio_buffer.append(audio=base64.b64encode(cast(Any, data)).decode("utf-8"))
+                        except websockets.exceptions.ConnectionClosedOK:
+                            # Connection was closed - attempt to reconnect
+                            bottom_pane.write("\n[yellow]Connection closed while sending audio. Reconnecting...[/yellow]")
+                            self.connected.clear()
+                            self.connection = None
+                            self.run_worker(self.handle_realtime_connection())
+                            await self.connected.wait()
+                            # Don't immediately retry sending this chunk, wait for next loop iteration
+                        except Exception as e:
+                            bottom_pane.write(f"\n[red]Error sending audio data: {str(e)}[/red]")
+                    except Exception as e:
+                        bottom_pane.write(f"\n[red]Connection error: {str(e)}[/red]")
+                        await asyncio.sleep(1)  # Brief pause before retry
+
                     await asyncio.sleep(0)
-                    continue
-
-                await self.should_send_audio.wait()
-                status_indicator.is_recording = True
-
-                data, _ = stream.read(read_size)
-
-                connection = await self._get_connection()
-                if not sent_audio:
-                    await connection.send({
-                        "type": "response.cancel", 
-                        "event_id": str(uuid.uuid4())
-                    })
-                    sent_audio = True
-
-                await connection.input_audio_buffer.append(audio=base64.b64encode(cast(Any, data)).decode("utf-8"))
-
-                await asyncio.sleep(0)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    bottom_pane.write(f"\n[red]Error in audio processing loop: {str(e)}[/red]")
+                    await asyncio.sleep(1)  # Brief pause before continuing
         except KeyboardInterrupt:
             pass
+        except asyncio.CancelledError:
+            # Handle task cancellation gracefully
+            bottom_pane.write("\n[yellow]Audio recording task cancelled[/yellow]")
+        except Exception as e:
+            bottom_pane.write(f"\n[red]Fatal error in audio recording: {str(e)}[/red]")
         finally:
-            stream.stop()
-            stream.close()
+            try:
+                stream.stop()
+                stream.close()
+            except Exception as e:
+                bottom_pane.write(f"\n[red]Error closing audio stream: {str(e)}[/red]")
 
     @weave.op(call_display_name="handle_key_press")
     async def on_key(self, event: events.Key) -> None:
         """Handle key press events."""
         if event.key == "enter":
-            self.query_one(Button).press()
-            return
+            # Only process text input on Enter key if the input field has focus
+            input_widget = self.query_one("#text-input", Input)
+            if self.focused is input_widget:
+                await self.handle_text_input()
+                return
 
         if event.key == "q":
             self.exit()
@@ -425,29 +494,140 @@ class RealtimeApp(App[None]):
 
         if event.key == "k":
             status_indicator = self.query_one(AudioStatusIndicator)
+            bottom_pane = self.query_one("#bottom-pane", RichLog)
+            
             if status_indicator.is_recording:
                 self.should_send_audio.clear()
                 status_indicator.is_recording = False
 
                 if self.session and self.session.turn_detection is None:
-                    # The default in the API is that the model will automatically detect when the user has
-                    # stopped talking and then start responding itself.
-                    #
-                    # However if we're in manual `turn_detection` mode then we need to
-                    # manually tell the model to commit the audio buffer and start responding.
-                    conn = await self._get_connection()
-                    await conn.input_audio_buffer.commit()
-                    await conn.response.create()
+                    try:
+                        # The default in the API is that the model will automatically detect when the user has
+                        # stopped talking and then start responding itself.
+                        #
+                        # However if we're in manual `turn_detection` mode then we need to
+                        # manually tell the model to commit the audio buffer and start responding.
+                        conn = await self._get_connection()
+                        await conn.input_audio_buffer.commit()
+                        await conn.response.create()
+                    except websockets.exceptions.ConnectionClosedOK:
+                        bottom_pane.write("\n[yellow]Connection closed. Attempting to reconnect...[/yellow]")
+                        # Restart the connection worker
+                        self.connected.clear()
+                        self.connection = None
+                        self.run_worker(self.handle_realtime_connection())
+                        await self.connected.wait()
+                    except Exception as e:
+                        bottom_pane.write(f"\n[red]Error stopping recording: {str(e)}[/red]")
             else:
                 self.should_send_audio.set()
                 status_indicator.is_recording = True
                 
                 # Clear any previous audio buffer when starting new recording
-                conn = await self._get_connection()
-                await conn.send({
-                    "type": "input_audio_buffer.clear",
+                try:
+                    conn = await self._get_connection()
+                    await conn.send({
+                        "type": "input_audio_buffer.clear",
+                        "event_id": str(uuid.uuid4())
+                    })
+                except websockets.exceptions.ConnectionClosedOK:
+                    bottom_pane.write("\n[yellow]Connection closed. Attempting to reconnect...[/yellow]")
+                    # Restart the connection worker
+                    self.connected.clear()
+                    self.connection = None
+                    self.run_worker(self.handle_realtime_connection())
+                    await self.connected.wait()
+                    
+                    # Try again after reconnection
+                    try:
+                        conn = await self._get_connection()
+                        await conn.send({
+                            "type": "input_audio_buffer.clear",
+                            "event_id": str(uuid.uuid4())
+                        })
+                    except Exception as e:
+                        bottom_pane.write(f"\n[red]Error starting recording: {str(e)}[/red]")
+                        status_indicator.is_recording = False
+                        self.should_send_audio.clear()
+                except Exception as e:
+                    bottom_pane.write(f"\n[red]Error starting recording: {str(e)}[/red]")
+                    status_indicator.is_recording = False
+                    self.should_send_audio.clear()
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button press events."""
+        if event.button.id == "send-button":
+            await self.handle_text_input()
+    
+    @weave.op(call_display_name="handle_text_input")
+    async def handle_text_input(self) -> None:
+        """Process text input from the input field."""
+        input_widget = self.query_one("#text-input", Input)
+        text = input_widget.value.strip()
+        log_conversation_turn("user_query", text, input_type="text")
+        if not text:
+            return
+            
+        # Clear the input field
+        input_widget.value = ""
+        
+        # Display the user's input in the bottom pane
+        bottom_pane = self.query_one("#bottom-pane", RichLog)
+        bottom_pane.write(f"\nYou asked (text): {text}")
+        
+        try:
+            # Check if we're already connected before trying to log or send
+            if not self.connected.is_set():
+                bottom_pane.write("\n[yellow]Connection not ready. Waiting for connection to establish...[/yellow]")
+                await self.connected.wait()
+                
+            # Log the user's text input with Weave
+            log_conversation_turn("user_query", text, input_type="text")
+            
+            # Send the text to the model as a conversation item
+            connection = await self._get_connection()
+            
+            # Try to cancel any ongoing response
+            try:
+                await connection.send({
+                    "type": "response.cancel",
                     "event_id": str(uuid.uuid4())
                 })
+            except websockets.exceptions.ConnectionClosedOK:
+                # Connection was already closed, attempt to reconnect
+                bottom_pane.write("\n[yellow]Connection closed. Attempting to reconnect...[/yellow]")
+                # Restart the connection worker
+                self.connected.clear()
+                self.connection = None
+                self.run_worker(self.handle_realtime_connection())
+                await self.connected.wait()
+                connection = await self._get_connection()
+            
+            # Create a new conversation item with the text - with corrected content type
+            try:
+                await connection.send({
+                    "type": "conversation.item.create",
+                    "event_id": str(uuid.uuid4()),
+                    "item": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": text}]
+                    }
+                })
+
+                log_conversation_turn("user_query", text, input_type="text")
+                
+                # Request a response from the model
+                await connection.send({
+                    "type": "response.create",
+                    "event_id": str(uuid.uuid4())
+                })
+            except websockets.exceptions.ConnectionClosedError as e:
+                bottom_pane.write(f"\n[red]Connection error: {str(e)}[/red]")
+            except Exception as e:
+                bottom_pane.write(f"\n[red]Error sending message: {str(e)}[/red]")
+        except Exception as e:
+            bottom_pane.write(f"\n[red]Error handling text input: {str(e)}[/red]")
 
 
 if __name__ == "__main__":
