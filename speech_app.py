@@ -17,6 +17,7 @@
 #     "sounddevice",
 #     "openai[realtime]",
 #     "pandas",
+#     "weave",    # Added Weave dependency
 # ]
 #
 # [tool.uv.sources]
@@ -43,10 +44,36 @@ from openai import AsyncOpenAI
 from openai.types.beta.realtime.session import Session
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 
+# Import Weave for tracing
+import weave
+import datetime
+
 # Import data functions from the new module
 from data_utils import load_dummy_dataframe, get_dataframe_info, query_dataframe, get_tools_schema
 # from data_utils_1 import load_dummy_dataframe, get_dataframe_info, query_dataframe, get_tools_schema
 
+import wandb
+
+@weave.op(call_display_name="log_conversation")
+def log_conversation_turn(turn_type: str, content: str) -> None:
+    """Log conversation turns for tracing with Weave.
+    
+    Args:
+        turn_type: Type of turn ("user_query" or "assistant_response")
+        content: The text content of the turn
+    """
+    # Make sure wandb is initialized
+    if wandb.run is None:
+        wandb.init(project="realtime-voice-app", name=f"conversation-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}")
+    
+    # Log the conversation turn with the standard wandb log method
+    # wandb.log({
+    #     "turn_type": turn_type,
+    #     "timestamp": datetime.datetime.now().isoformat(),
+    #     "content_length": len(content),
+    #     "content": content
+    # })
+    return content
 
 class SessionDisplay(Static):
     """A widget that shows the current session ID."""
@@ -160,6 +187,13 @@ class RealtimeApp(App[None]):
             yield RichLog(id="bottom-pane", wrap=True, highlight=True, markup=True)
 
     async def on_mount(self) -> None:
+        # Initialize Weave with a project name
+        weave.init("realtime-voice-app")
+
+        if wandb.run is None:
+            wandb.init(project="realtime-voice-app", name=f"session-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}")
+
+        
         self.run_worker(self.handle_realtime_connection())
         self.run_worker(self.send_mic_audio())
         
@@ -171,6 +205,7 @@ class RealtimeApp(App[None]):
         bottom_pane.write(str(self.dataframe.head(3)))
         bottom_pane.write("\nAsk questions about this data by pressing K and speaking.")
 
+    @weave.op(call_display_name="realtime_connection")
     async def handle_realtime_connection(self) -> None:
         async with self.client.beta.realtime.connect(model="gpt-4o-realtime-preview") as conn:
             self.connection = conn
@@ -229,6 +264,14 @@ class RealtimeApp(App[None]):
                     if event.is_final:
                         full_text = user_inputs.get(event.item_id, "")
                         bottom_pane.write(f"\nYou asked: {full_text}")
+                        
+                        # Log the user's query with Weave
+                        log_conversation_turn("user_query", full_text)
+                    
+                    # Process completed speech when "is_final" is True
+                    if event.is_final:
+                        full_text = user_inputs.get(event.item_id, "")
+                        bottom_pane.write(f"\nYou asked: {full_text}")
                 
                 # Function calling handling - fixed to work with actual event structure
                 if event.type == "response.function_call_arguments.delta":
@@ -264,8 +307,10 @@ class RealtimeApp(App[None]):
                                     
                                     # Execute the function
                                     if func_name == 'query_dataframe':
-                                        result = query_dataframe(self.dataframe, arguments)
-                                        
+                                        # Wrap the function call with Weave attributes for better tracing
+                                        with weave.attributes({'function_call': func_name, 'arguments': arguments}):
+                                            result = query_dataframe(self.dataframe, arguments)
+                                            log_conversation_turn("function_result", json.dumps(result))
                                         # Send function results back to model
                                         await conn.send({
                                             "type": "conversation.item.create",
@@ -298,6 +343,10 @@ class RealtimeApp(App[None]):
                     # Clear and update the entire content because RichLog otherwise treats each delta as a new line
                     bottom_pane.clear()
                     bottom_pane.write(acc_items[event.item_id])
+
+                    current_text = acc_items[event.item_id]
+                    if len(current_text) > 10 and "." in current_text[-10:]:
+                        log_conversation_turn("assistant_response", current_text)
                     continue
 
                 if event.type == "input_audio_buffer.speech_started":
@@ -315,6 +364,7 @@ class RealtimeApp(App[None]):
         assert self.connection is not None
         return self.connection
 
+    @weave.op(call_display_name="send_mic_audio")
     async def send_mic_audio(self) -> None:
         import sounddevice as sd  # type: ignore
 
@@ -362,6 +412,7 @@ class RealtimeApp(App[None]):
             stream.stop()
             stream.close()
 
+    @weave.op(call_display_name="handle_key_press")
     async def on_key(self, event: events.Key) -> None:
         """Handle key press events."""
         if event.key == "enter":
