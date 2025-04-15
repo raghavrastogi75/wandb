@@ -10,12 +10,16 @@ import websockets.exceptions
 # Import directly from audio_util to maintain original code structure
 from audio_util import CHANNELS, SAMPLE_RATE
 
-from logging_utils import log_conversation_turn
+from logging_utils import log_input_question, log_llm_queries, log_llm_query_result, log_llm_outputs
 from data_utils import get_tools_schema, query_dataframe
 
 from openai import AsyncOpenAI
 from openai.types.beta.realtime.session import Session
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
+
+instructions = "Only answer the questions that are related to querying the dataset using the tool provided " \
+"If you get any other type of question that is not related to a query, politely tell the user to ask the questions related to dataset only"
+
 
 class RealtimeHandler:
     def __init__(self, app, client, audio_player, dataframe, connected, pending_function_calls):
@@ -29,13 +33,15 @@ class RealtimeHandler:
         self.session = None
         self.last_audio_item_id = None
         self.should_send_audio = app.should_send_audio
+        self.logged_responses = set()  # Keep track of responses we've already logged
+        self.current_response_id = None  # Track current response being processed
     
     async def _get_connection(self) -> AsyncRealtimeConnection:
         await self.connected.wait()
         assert self.connection is not None
         return self.connection
     
-    @weave.op(call_display_name="realtime_connection")
+    
     async def handle_realtime_connection(self) -> None:
         async with self.client.beta.realtime.connect(model="gpt-4o-realtime-preview") as conn:
             self.connection = conn
@@ -45,7 +51,9 @@ class RealtimeHandler:
             await conn.session.update(session={
                 "turn_detection": {"type": "server_vad"},
                 "tools": [tools_schema],
-                "tool_choice": "auto"
+                "tool_choice": "auto",
+                "instructions": instructions,
+                "temperature":0.6
             })
 
             acc_items: dict[str, Any] = {}
@@ -95,7 +103,7 @@ class RealtimeHandler:
                         bottom_pane.write(f"\nYou asked: {full_text}")
                         
                         # Log the user's query with Weave
-                        log_conversation_turn("user_query", full_text, input_type="voice")
+                        log_input_question("user_query", full_text, input_type="voice")
                 
                 # Function calling handling
                 if event.type == "response.function_call_arguments.delta":
@@ -110,7 +118,27 @@ class RealtimeHandler:
                     else:
                         self.pending_function_calls[call_id]['arguments'] += event.delta
                 
+                if event.type == "response.created":
+                    acc_items.clear()
+                    self.current_response_id = None
+                    if hasattr(event, 'response') and hasattr(event.response, 'id'):
+                        self.current_response_id = event.response.id
+                    continue
+
                 if event.type == "response.done":
+                    # Only log if we haven't logged this response already
+                    if self.current_response_id and self.current_response_id not in self.logged_responses:
+                        current_text = ""
+                        # Find the most complete text version to log
+                        for item_id, text in acc_items.items():
+                            if len(text) > 0 and (not current_text or len(text) > len(current_text)):
+                                current_text = text
+                        
+                        # Log if we found valid content
+                        if current_text:
+                            log_llm_outputs("assistant_response", current_text)
+                            self.logged_responses.add(self.current_response_id)
+                    
                     # Check if there's a function call in the output
                     if hasattr(event, 'response') and hasattr(event.response, 'output'):
                         for output_item in event.response.output:
@@ -133,8 +161,8 @@ class RealtimeHandler:
                                         # Wrap the function call with Weave attributes for better tracing
                                         with weave.attributes({'function_call': func_name, 'arguments': arguments}):
                                             result = query_dataframe(self.dataframe, arguments)
-                                            log_conversation_turn("arguments", arguments)
-                                            log_conversation_turn("result", result)
+                                            log_llm_queries("arguments", arguments)
+                                            # log_llm_query_result("result", result)
                                         # Send function results back to model
                                         await conn.send({
                                             "type": "conversation.item.create",
@@ -167,10 +195,6 @@ class RealtimeHandler:
                     # Clear and update the entire content
                     bottom_pane.clear()
                     bottom_pane.write(acc_items[event.item_id])
-
-                    current_text = acc_items[event.item_id]
-                    if len(current_text) > 10 and "." in current_text[-10:]:
-                        log_conversation_turn("assistant_response", current_text)
                     continue
 
                 if event.type == "input_audio_buffer.speech_started":
@@ -343,7 +367,10 @@ class RealtimeHandler:
         
         if not text:
             return
-            
+        
+        # Clear accumulated items when a new query starts
+        acc_items = {}
+        
         # Clear the input field
         input_widget.value = ""
         
@@ -358,7 +385,7 @@ class RealtimeHandler:
                 await self.connected.wait()
                 
             # Log the user's text input with Weave
-            log_conversation_turn("user_query", text, input_type="text")
+            log_input_question("user_query", text, input_type="text")
             
             # Send the text to the model as a conversation item
             connection = await self._get_connection()
