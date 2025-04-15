@@ -5,6 +5,18 @@ import numpy as np
 import json
 from typing import Dict, List, Union, Optional, Any, Literal
 
+"""
+Utilities for loading, processing, and querying pandas DataFrames,
+often derived from WandB/Weave exports. Includes functionality for:
+- Translating user-friendly shortcut column names to full names.
+- Generating a JSON schema for available query operations.
+- Loading data from CSV or creating a dummy DataFrame.
+- Serializing various data types (including pandas objects) to JSON-friendly formats.
+- Performing common DataFrame operations like info, describe, filter, aggregate,
+  sort, value counts, correlation, top N values, and finding best hyperparameters.
+- A central dispatcher function (`query_dataframe`) to handle different query types.
+"""
+
 # --- Shortcut Map and Translate Function (Keep as before) ---
 COLUMN_SHORTCUTS = {
     "f1 score": 'output.HalluScorerEvaluator.scorer_evaluation_metrics.f1',
@@ -39,14 +51,32 @@ COLUMN_SHORTCUTS = {
 }
 
 def translate_column_name(name: str) -> str:
-    """Translates a shortcut column name to its full name if found."""
+    """Translates a shortcut column name to its full name if found.
+
+    Uses the `COLUMN_SHORTCUTS` dictionary for translation. If the input
+    is not a string or the shortcut is not found, the original name is returned.
+
+    Args:
+        name: The column name or shortcut to translate.
+
+    Returns:
+        The full column name if a shortcut is found, otherwise the original name.
+    """
     if not isinstance(name, str): return name
     shortcut = name.lower().strip()
     return COLUMN_SHORTCUTS.get(shortcut, name)
 
 # --- Schema Function (MODIFIED) ---
 def get_tools_schema() -> Dict[str, Any]:
-    """ Generate the tools schema including 'best_hyperparameters'. """
+    """ Generate the tools schema including 'best_hyperparameters'.
+
+    Defines the structure and parameters expected by the `query_dataframe`
+    function, suitable for use with function-calling models or similar tools.
+    Includes descriptions and types for various query parameters.
+
+    Returns:
+        A dictionary representing the JSON schema for the `query_dataframe` function.
+    """
     schema_parameters = {
         "type": "object",
         "properties": {
@@ -106,8 +136,19 @@ def get_tools_schema() -> Dict[str, Any]:
 # (Including _serialize_result, load_dummy_dataframe, get_dataframe_info, describe_dataframe, filter_dataframe, aggregate_dataframe, sort_dataframe, value_counts_dataframe, correlation_dataframe, get_top_n_values)
 # ... (Paste all those functions from the previous corrected version here) ...
 def load_dummy_dataframe(file_path=None):
-    """Load a DataFrame from a specified path or create a fallback dummy."""
-    default_path = r"C:\Users\ragha\OneDrive\Documents\wandb\weave_export_hallucination_2025-04-11.csv" # CHECK/CHANGE PATH
+    """Load a DataFrame from a specified path or create a fallback dummy.
+
+    Attempts to load a CSV file from the given `file_path` or a default path.
+    Removes unnamed columns and attempts basic numeric conversion.
+    If loading fails, it creates and returns a small dummy DataFrame.
+
+    Args:
+        file_path: Optional path to the CSV file to load.
+
+    Returns:
+        A pandas DataFrame, either loaded from the file or a dummy DataFrame.
+    """
+    default_path = r"weave_export_hallucination_2025-04-11.csv" # CHECK/CHANGE PATH
     load_path = file_path if file_path else default_path
     try:
         print(f"Attempting to load DataFrame from: {load_path}")
@@ -124,7 +165,22 @@ def load_dummy_dataframe(file_path=None):
     except Exception as e: print(f"Error loading DF: {e}. Using dummy."); return pd.DataFrame({'attributes.model_name': ['M1'], 'output.HalluScorerEvaluator.scorer_evaluation_metrics.f1': [0.5], 'summary.weave.latency_ms': [100]})
 
 def _serialize_result(data: Any, limit: Optional[int] = 20) -> Dict[str, Any]:
-    """Serialize results, handles Series with index correctly now."""
+    """Serialize results, handles Series with index correctly now.
+
+    Converts various data types (pandas DataFrame/Series, numpy types, basic Python types)
+    into a JSON-serializable dictionary format. Handles potential issues like
+    infinity, NaN, and limits the number of rows/items returned for DataFrames/Series.
+
+    Args:
+        data: The data to serialize (DataFrame, Series, scalar, list, dict, etc.).
+        limit: The maximum number of rows (for DataFrame) or items (for Series)
+               to include in the serialized output. Defaults to 20.
+
+    Returns:
+        A dictionary containing the serialized 'result', original 'count' (if applicable),
+        and a 'note' indicating truncation if `limit` was applied. Returns an 'error'
+        key if serialization fails.
+    """
     note = ""; original_count = None
     try:
         if isinstance(data, pd.DataFrame):
@@ -157,7 +213,21 @@ def _serialize_result(data: Any, limit: Optional[int] = 20) -> Dict[str, Any]:
 
 
 def get_dataframe_info(df: pd.DataFrame, columns: Optional[Union[str, List[str]]] = None) -> Dict[str, Any]:
-    """Get basic info or info for specific (translated) columns."""
+    """Get basic info or info for specific (translated) columns.
+
+    Provides general information about the DataFrame (shape, columns, dtypes, memory usage)
+    or detailed information for specified columns (dtype, non-null count, unique count,
+    sample values). Handles column name translation using shortcuts.
+
+    Args:
+        df: The input DataFrame.
+        columns: Optional. A single column name/shortcut or a list of column
+                 names/shortcuts to get specific info for. If None, provides
+                 general DataFrame info.
+
+    Returns:
+        A dictionary containing the requested information or an error message.
+    """
     if df.empty: return {"error": "DataFrame is empty."}
     if columns:
         if isinstance(columns, str): columns = [columns]
@@ -171,7 +241,23 @@ def get_dataframe_info(df: pd.DataFrame, columns: Optional[Union[str, List[str]]
 
 
 def describe_dataframe(df: pd.DataFrame, columns: Optional[Union[str, List[str]]] = None, percentiles: Optional[List[float]] = None) -> Dict[str, Any]:
-    """Get descriptive statistics. Handles own serialization."""
+    """Get descriptive statistics. Handles own serialization.
+
+    Calculates descriptive statistics (count, mean, std, min, max, percentiles)
+    for numeric columns in the DataFrame or for specified columns. Handles
+    column name translation and serializes the output.
+
+    Args:
+        df: The input DataFrame.
+        columns: Optional. A single column name/shortcut or a list of column
+                 names/shortcuts to describe. If None, describes all numeric columns.
+        percentiles: Optional. A list of percentiles to include in the output
+                     (e.g., [0.25, 0.5, 0.75]).
+
+    Returns:
+        A dictionary containing the descriptive statistics or an error message.
+        The result is nested under the "description" key.
+    """
     if df.empty: return {"error": "DataFrame is empty."}
     target_df = df
     if columns:
@@ -190,7 +276,27 @@ def describe_dataframe(df: pd.DataFrame, columns: Optional[Union[str, List[str]]
 
 
 def filter_dataframe(df: pd.DataFrame, filters: Optional[List[Dict[str, Any]]] = None, filter_column: Optional[str] = None, filter_operator: Optional[str] = None, filter_value: Any = None) -> Dict[str, Any]:
-    """Filter the DataFrame. Includes pandas version compatibility for bools."""
+    """Filter the DataFrame. Includes pandas version compatibility for bools.
+
+    Applies one or more filters to the DataFrame. Supports complex filters via the
+    `filters` list or a simple filter via `filter_column`, `filter_operator`,
+    and `filter_value`. Handles column name translation, various operators
+    (==, !=, >, >=, <, <=, contains, startswith, endswith, between, isin, isnull, notnull),
+    and attempts type conversion based on the column's dtype.
+
+    Args:
+        df: The input DataFrame.
+        filters: Optional. A list of filter dictionaries, each with 'column'
+                 (name/shortcut), 'operator', and optionally 'value'. Filters
+                 are combined with AND logic.
+        filter_column: Optional. Column name/shortcut for a single filter.
+        filter_operator: Optional. Operator for the single filter.
+        filter_value: Optional. Value for the single filter.
+
+    Returns:
+        A dictionary containing the serialized filtered DataFrame ('result', 'count', 'note')
+        or an error message.
+    """
     if df.empty: return {"result": [], "count": 0, "note": "Input DataFrame was empty."}
     filtered_df = df.copy(); conditions = []; active_filters = filters
     if not filters and filter_column and filter_operator:
@@ -243,7 +349,25 @@ def filter_dataframe(df: pd.DataFrame, filters: Optional[List[Dict[str, Any]]] =
 
 
 def aggregate_dataframe(df: pd.DataFrame, columns: Union[str, List[str]], function: Union[str, List[str]], group_by: Optional[Union[str, List[str]]] = None) -> Dict[str, Any]:
-    """Aggregate data in the DataFrame, checking for valid functions."""
+    """Aggregate data in the DataFrame, checking for valid functions.
+
+    Performs aggregation operations (mean, median, sum, min, max, count, std, var,
+    first, last, nunique) on specified columns, optionally grouping by other columns.
+    Handles column name translation for both aggregation and grouping columns.
+    Checks for valid aggregation function names.
+
+    Args:
+        df: The input DataFrame.
+        columns: A single column name/shortcut or a list of column names/shortcuts
+                 to aggregate.
+        function: A single aggregation function name or a list of function names.
+        group_by: Optional. A single column name/shortcut or a list of column
+                  names/shortcuts to group by before aggregation.
+
+    Returns:
+        A dictionary containing the serialized aggregated DataFrame ('result', 'count', 'note')
+        or an error message.
+    """
     if df.empty: return {"error": "Cannot aggregate empty DataFrame."}
     if isinstance(columns, str): original_columns = columns; columns = [columns]
     else: original_columns = columns # Keep original list for warning messages
@@ -291,7 +415,24 @@ def aggregate_dataframe(df: pd.DataFrame, columns: Union[str, List[str]], functi
 
 
 def sort_dataframe(df: pd.DataFrame, sort_by: Union[str, List[str]], ascending: Union[bool, List[bool]] = True, limit: Optional[int] = None) -> Dict[str, Any]:
-    """Sort the DataFrame."""
+    """Sort the DataFrame.
+
+    Sorts the DataFrame based on one or more columns. Handles column name
+    translation and allows specifying ascending/descending order for each
+    sort column. Optionally limits the number of rows returned.
+
+    Args:
+        df: The input DataFrame.
+        sort_by: A single column name/shortcut or a list of column names/shortcuts
+                 to sort by.
+        ascending: Optional. A single boolean or a list of booleans indicating
+                   the sort direction for each `sort_by` column. Defaults to True.
+        limit: Optional. The maximum number of rows to return after sorting.
+
+    Returns:
+        A dictionary containing the serialized sorted DataFrame ('result', 'count', 'note')
+        or an error message.
+    """
     if df.empty: return {"result": [], "count": 0, "note": "Input DataFrame was empty."}
     if isinstance(sort_by, str): original_sort_by = sort_by; sort_by = [sort_by]
     else: original_sort_by = sort_by # Keep original list for warning messages
@@ -313,9 +454,27 @@ def sort_dataframe(df: pd.DataFrame, sort_by: Union[str, List[str]], ascending: 
 
 
 def value_counts_dataframe(df: pd.DataFrame, columns: Union[str, List[str]], limit: Optional[int] = None) -> Dict[str, Any]:
-     """Get value counts for specified column(s)."""
+     """Get value counts for specified column(s).
+
+     Calculates the frequency of unique values in one or more specified columns.
+     Handles column name translation and optionally limits the number of unique
+     values returned per column.
+
+     Args:
+         df: The input DataFrame.
+         columns: A single column name/shortcut or a list of column names/shortcuts
+                  for which to calculate value counts.
+         limit: Optional. The maximum number of unique values (and their counts)
+                to return for each column.
+
+     Returns:
+         If a single column is requested, returns the serialized value counts
+         (dict format) for that column. If multiple columns are requested, returns
+         a dictionary where keys are the original column names and values are the
+         serialized value counts for each, nested under a "value_counts" key.
+         Returns an error message if issues occur.
+     """
      if df.empty: return {"error": "Cannot get value counts from empty DataFrame."}
-     # *** FIX: Define original_columns before try block ***
      original_columns = columns
      if isinstance(columns, str): columns = [columns]
 
@@ -323,20 +482,33 @@ def value_counts_dataframe(df: pd.DataFrame, columns: Union[str, List[str]], lim
      try:
          columns_translated = [translate_column_name(col) for col in columns]
          for i, col_t in enumerate(columns_translated):
-             # Use original_columns correctly based on its type
              col_orig = original_columns if isinstance(original_columns, str) else original_columns[i]
              if col_t not in df.columns: results[col_orig] = {"error": f"Column '{col_orig}' (->'{col_t}') not found"}
              else: counts = df[col_t].value_counts(dropna=False); results[col_orig] = _serialize_result(counts, limit=limit)
 
-         # Return single result directly if only one requested originally
          if isinstance(original_columns, str): return results[original_columns]
          elif isinstance(original_columns, list) and len(original_columns) == 1: return results[original_columns[0]]
-         else: return {"value_counts": results} # Multiple columns requested
+         else: return {"value_counts": results}
      except Exception as e: return {"error": f"Error getting value counts: {str(e)}"}
 
 
 def correlation_dataframe(df: pd.DataFrame, columns: Optional[List[str]] = None, method: str = 'pearson') -> Dict[str, Any]:
-     """Calculate pairwise correlation of columns."""
+     """Calculate pairwise correlation of columns.
+
+     Computes the pairwise correlation between numeric columns in the DataFrame,
+     or a specified subset of columns. Handles column name translation.
+
+     Args:
+         df: The input DataFrame.
+         columns: Optional. A list of column names/shortcuts to include in the
+                  correlation calculation. If None, uses all numeric columns.
+         method: Optional. The correlation method ('pearson', 'kendall', 'spearman').
+                 Defaults to 'pearson'.
+
+     Returns:
+         A dictionary containing the serialized correlation matrix (as a dict of dicts)
+         under the "correlation_matrix" key, or an error message.
+     """
      if df.empty: return {"error": "Cannot calculate correlation on empty DataFrame."}
      target_df = df
      if columns:
@@ -349,22 +521,36 @@ def correlation_dataframe(df: pd.DataFrame, columns: Optional[List[str]] = None,
      if numeric_df.shape[1] < 2: return {"error": f"Correlation requires >= 2 numeric columns. Found: {numeric_df.columns.tolist()}"}
      try:
          correlation_matrix = numeric_df.corr(method=method)
-         # Serialize matrix using orient='index' for dict structure
          return {"correlation_matrix": _serialize_result(correlation_matrix.to_dict(orient="index"))}
      except Exception as e: return {"error": f"Error calculating correlation: {str(e)}"}
 
 
 def get_top_n_values(df: pd.DataFrame, sort_by: str, ascending: bool, n: int) -> Dict[str, Any]:
-    """Gets the top N values from a single column after sorting."""
+    """Gets the top N values from a single column after sorting.
+
+    Extracts the top (or bottom) N values from a single specified column after
+    sorting it. Handles column name translation and attempts numeric conversion
+    for object-type columns if possible.
+
+    Args:
+        df: The input DataFrame.
+        sort_by: The column name/shortcut to sort and extract values from.
+        ascending: Boolean indicating the sort direction (True for ascending/smallest,
+                   False for descending/largest).
+        n: The number of top/bottom values to return.
+
+    Returns:
+        A dictionary containing the list of top N values ('result'), the count ('count'),
+        a descriptive 'note', or an error message.
+    """
     if df.empty: return {"error": "Cannot get top N from empty DataFrame."}
     original_sort_by = sort_by; sort_by_col = translate_column_name(sort_by)
     if sort_by_col not in df.columns: return {"error": f"Column '{original_sort_by}' (->'{sort_by_col}') not found."}
     try:
         series = df[sort_by_col]
-        # Attempt conversion if object type, check if sortable otherwise
         if series.dtype == 'object':
             numeric_series = pd.to_numeric(series, errors='coerce')
-            if not numeric_series.isnull().all(): series = numeric_series # Use numeric if conversion worked
+            if not numeric_series.isnull().all(): series = numeric_series
             else: return {"error": f"Col '{sort_by_col}' (object type) could not be converted to numeric for sorting."}
 
         if not pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_string_dtype(series) and not pd.api.types.is_datetime64_any_dtype(series):
@@ -379,18 +565,33 @@ def get_top_n_values(df: pd.DataFrame, sort_by: str, ascending: bool, n: int) ->
 
 # --- 1. New Helper Function for Best Hyperparameters ---
 def find_best_hyperparameters(df: pd.DataFrame, metric_column: str, hyperparameter_columns: List[str], find_max: bool = True) -> Dict[str, Any]:
-    """Finds the hyperparameter values corresponding to the best metric value."""
+    """Finds the hyperparameter values corresponding to the best metric value.
+
+    Identifies the row with the maximum or minimum value in the specified `metric_column`
+    and returns the values from the corresponding `hyperparameter_columns` for that row.
+    Handles column name translation for both metric and hyperparameter columns.
+
+    Args:
+        df: The input DataFrame.
+        metric_column: The name/shortcut of the column containing the metric to optimize.
+        hyperparameter_columns: A list of column names/shortcuts representing the
+                                hyperparameters to retrieve.
+        find_max: Optional. If True (default), finds the row with the maximum metric value.
+                  If False, finds the row with the minimum metric value.
+
+    Returns:
+        A dictionary containing the best metric value and a dictionary of the
+        corresponding hyperparameter values, nested under the "result" key.
+        Returns an error message if issues occur.
+    """
     if df.empty: return {"error": "Cannot find best hyperparameters in empty DataFrame."}
     if not hyperparameter_columns: return {"error": "No hyperparameter columns specified."}
 
-    # Translate metric column
     original_metric = metric_column
     metric_col_t = translate_column_name(metric_column)
     if metric_col_t not in df.columns:
         return {"error": f"Metric column '{original_metric}' (->'{metric_col_t}') not found."}
 
-    # Translate hyperparameter columns and check existence
-    # Store tuples of (original_name, translated_name) for valid ones
     valid_hyperparams_map = []
     missing_hyperparams_input = []
     for hp_orig in hyperparameter_columns:
@@ -414,27 +615,21 @@ def find_best_hyperparameters(df: pd.DataFrame, metric_column: str, hyperparamet
 
         if metric_series.isna().all(): return {"error": f"Metric column '{metric_col_t}' has only NaN values."}
 
-        # Find index of best row (handle potential NaNs in metric causing idxmax/idxmin to fail)
         try:
             best_index = metric_series.idxmax() if find_max else metric_series.idxmin()
         except TypeError as e:
-             # This can happen if NaNs are present and pandas version is older
              print(f"Warning: idxmax/idxmin failed ({e}), trying sort_values approach.")
              sorted_df = df.sort_values(by=metric_col_t, ascending=(not find_max), na_position='last')
              if sorted_df.empty: return {"error": f"No valid rows found after sorting by {metric_col_t}"}
              best_index = sorted_df.index[0]
 
-
         best_row = df.loc[best_index]
         best_metric_value = best_row[metric_col_t]
 
-        # *** FIX: Extract values using the map of original and translated names ***
         hyperparameter_values = {}
         for hp_orig, hp_t in valid_hyperparams_map:
              hyperparameter_values[hp_orig] = best_row[hp_t]
-        # *** End Fix ***
 
-        # Prepare and serialize result
         result_data = {
             f"best_{'max' if find_max else 'min'}_{original_metric}": best_metric_value,
             "hyperparameters": hyperparameter_values
@@ -456,7 +651,27 @@ def find_best_hyperparameters(df: pd.DataFrame, metric_column: str, hyperparamet
 
 # --- Main Dispatcher (MODIFIED) ---
 def query_dataframe(df: pd.DataFrame, query_params: Dict[str, Any]) -> Dict[str, Any]:
-    """ Dispatcher function for DataFrame queries. Helpers handle translation. """
+    """ Dispatcher function for DataFrame queries. Helpers handle translation.
+
+    Acts as the main entry point for performing various analyses on the DataFrame.
+    It takes a dictionary of query parameters, determines the `query_type`, and
+    calls the appropriate helper function (e.g., `filter_dataframe`,
+    `aggregate_dataframe`, `find_best_hyperparameters`). Column name translation
+    is typically handled within the helper functions.
+
+    Args:
+        df: The input DataFrame to query.
+        query_params: A dictionary containing the query parameters, including:
+            - query_type (str): The type of operation to perform (e.g., "filter",
+              "aggregate", "sort", "best_hyperparameters").
+            - Other parameters specific to the query_type (e.g., "columns",
+              "filters", "metric_column", "hyperparameter_columns"). See
+              `get_tools_schema` for details.
+
+    Returns:
+        A dictionary containing the results of the query (usually serialized)
+        or an error message.
+    """
     print(f"Received query params: {query_params}")
     query_type = query_params.get("query_type")
     limit = query_params.get("limit") or query_params.get("n")
@@ -486,17 +701,15 @@ def query_dataframe(df: pd.DataFrame, query_params: Dict[str, Any]) -> Dict[str,
         elif query_type == "correlation":
              cols = query_params.get("columns"); method = query_params.get("correlation_method", "pearson")
              return correlation_dataframe(df, columns=cols, method=method)
-        # --- 4. Call New Helper for best_hyperparameters ---
         elif query_type == "best_hyperparameters":
             metric_col = query_params.get("metric_column")
             hp_cols = query_params.get("hyperparameter_columns")
-            find_max = query_params.get("find_max", True) # Default to True if not specified
+            find_max = query_params.get("find_max", True)
             if not metric_col or not hp_cols:
                 return {"error": "'best_hyperparameters' query requires 'metric_column' and 'hyperparameter_columns'."}
             if not isinstance(hp_cols, list):
                  return {"error": "'hyperparameter_columns' must be a list of column names/shortcuts."}
             return find_best_hyperparameters(df, metric_column=metric_col, hyperparameter_columns=hp_cols, find_max=find_max)
-        # --- End Change ---
         elif query_type == "general": return get_dataframe_info(df)
         else: print(f"Unknown query type '{query_type}'. Falling back to general info."); return get_dataframe_info(df)
     except Exception as e: import traceback; print(f"Error in query_dataframe dispatcher: {traceback.format_exc()}"); return {"error": f"Unexpected error dispatching query ({query_type}): {str(e)}"}
@@ -507,13 +720,11 @@ if __name__ == "__main__":
     df_test = load_dummy_dataframe()
     if df_test is not None and not df_test.empty:
         print("\n--- Comprehensive Testing ---")
-        # Define shortcuts & columns
         f1_shortcut = "f1 score"; hallu_frac_shortcut = "hallucination rate"; model_shortcut = "model";
         latency_shortcut = "latency"; precision_shortcut = "precision"; status_shortcut = "status";
         display_name_shortcut = "display name"; recall_shortcut = "recall"; accuracy_shortcut="accuracy";
         lr_shortcut = "learning rate"; epochs_shortcut = "epochs"; warmup_shortcut = "warmup ratio"; scheduler_shortcut="scheduler type"
 
-        # Get actual column names
         f1_col = COLUMN_SHORTCUTS.get(f1_shortcut); model_col = COLUMN_SHORTCUTS.get(model_shortcut)
         latency_col = COLUMN_SHORTCUTS.get(latency_shortcut); precision_col = COLUMN_SHORTCUTS.get(precision_shortcut)
         status_col = COLUMN_SHORTCUTS.get(status_shortcut); display_name_col = COLUMN_SHORTCUTS.get(display_name_shortcut)
@@ -523,8 +734,8 @@ if __name__ == "__main__":
         full_col_name_example = "output.HalluScorerEvaluator.is_hallucination_ground_truth.true_count"
         null_check_col_shortcut = "summary.weave.feedback.wandb.reaction.1.payload.emoji"
 
-        # Helpers
         def check_cols(df, cols_to_check, check_numeric=False):
+            """Helper function to check if required columns exist in the DataFrame for testing."""
             if cols_to_check is None: cols_to_check = []
             cols_to_check = [c for c in cols_to_check if c is not None]
             if not cols_to_check: return False
@@ -535,18 +746,18 @@ if __name__ == "__main__":
                  if non_numeric: print(f"\n--- Check Failed: Cols not numeric: {non_numeric} ---"); return False
             return True
         def run_test(test_num, description, params):
+            """Helper function to run a query test and print results/errors."""
             print(f"\n{test_num}. Test {description}:")
             try:
                 result = query_dataframe(df_test, params)
                 print(json.dumps(result, indent=2, default=str))
-                is_error_test = test_num > 30 # Assuming tests 31+ are error tests
+                is_error_test = test_num > 30
                 has_error = isinstance(result, dict) and "error" in result
                 if is_error_test and not has_error: print(f"--- !!! TEST {test_num} FAILED: Expected error, got success. !!! ---")
                 elif not is_error_test and has_error: print(f"--- !!! TEST {test_num} FAILED with UNEXPECTED error. !!! ---")
                 elif is_error_test and has_error: print(f"--- TEST {test_num} CORRECTLY produced an error. ---")
             except Exception as e: print(f"[bold red]!!! TEST {test_num} PYTHON EXCEPTION: {e} !!![/bold red]"); import traceback; traceback.print_exc()
 
-        # --- Run Tests ---
         if check_cols(df_test, [precision_col]): run_test(1, f"Describe ('{precision_shortcut}')", {"query_type": "describe", "columns": [precision_shortcut]})
         if check_cols(df_test, [COLUMN_SHORTCUTS.get(hallu_frac_shortcut), model_col]): run_test(2, f"Filter ('{hallu_frac_shortcut}' > 0.5 AND {model_shortcut} contains 'gpt')", {"query_type": "filter", "filters": [{"column": hallu_frac_shortcut, "operator": ">", "value": 0.5}, {"column": model_shortcut, "operator": "contains", "value": "gpt"}]})
         if check_cols(df_test, [latency_col, model_col]): run_test(3, f"Aggregate (Mean '{latency_shortcut}' by '{model_shortcut}')", {"query_type": "aggregate", "columns": [latency_shortcut], "function": "mean", "group_by": model_shortcut})
@@ -582,27 +793,24 @@ if __name__ == "__main__":
         else: print(f"\n22. Skipping spearman correlation test.")
         if check_cols(df_test, [latency_col]): run_test(23, f"Describe ('{latency_shortcut}' with custom percentiles)", {"query_type": "describe", "columns": latency_shortcut, "percentiles": [0.1, 0.5, 0.9]})
 
-        # *** 5. Add Test Case for best_hyperparameters ***
         hp_cols_to_get = [lr_shortcut, epochs_shortcut, warmup_shortcut, scheduler_shortcut]
         if check_cols(df_test, [f1_col] + [COLUMN_SHORTCUTS.get(hp) for hp in hp_cols_to_get]):
             run_test(24, f"Best Hyperparameters (Max '{f1_shortcut}')", {
                 "query_type": "best_hyperparameters",
                 "metric_column": f1_shortcut,
                 "hyperparameter_columns": hp_cols_to_get,
-                "find_max": True # Find max F1 score
+                "find_max": True
             })
-            # Also test find_min (e.g., for latency)
             if check_cols(df_test, [latency_col] + [COLUMN_SHORTCUTS.get(hp) for hp in hp_cols_to_get]):
                  run_test(25, f"Best Hyperparameters (Min '{latency_shortcut}')", {
                      "query_type": "best_hyperparameters",
                      "metric_column": latency_shortcut,
                      "hyperparameter_columns": hp_cols_to_get,
-                     "find_max": False # Find min latency
+                     "find_max": False
                  })
         else: print(f"\n24/25. Skipping best_hyperparameters test.")
 
 
-        # Error Handling Tests (Renumbered)
         print("\n--- Error Handling Tests (Expect Errors Below) ---")
         run_test(31, "Error: Non-existent column filter", {"query_type": "filter", "filter_column": "non_existent_column_xyz", "filter_operator": "==", "filter_value": "test"})
         run_test(32, "Error: Invalid operator", {"query_type": "filter", "filter_column": model_shortcut, "filter_operator": "@@@", "filter_value": "test"})
