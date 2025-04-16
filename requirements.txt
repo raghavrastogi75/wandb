@@ -15,7 +15,7 @@ PyAudio # Note: Often requires system libraries (like portaudio) to be installed
 
 # --- AI / External Services ---
 openai
-weave
+
 wandb
 
 # --- Terminal UI ---
@@ -23,3 +23,4 @@ textual
 
 # --- Networking ---
 websockets
+weave

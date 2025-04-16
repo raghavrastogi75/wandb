@@ -5,7 +5,7 @@ This project provides a utility and a simple application to query a dataframe an
 ## Installation
 
 1.  **Clone the repository (if applicable) or ensure you have the project files.**
-2.  **Create a virtual environment (recommended):**
+2.  **Create a virtual environment (recommended)(runs on python 3.10.11):**
     ```bash
     python -m venv venv
     source venv/bin/activate  # On Windows use `venv\Scripts\activate`
