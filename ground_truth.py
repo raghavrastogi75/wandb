@@ -6,7 +6,7 @@ import contextlib # Import contextlib for redirecting stdout
 
 
 # Read the CSV data
-df = pd.read_csv("C:\\Users\\ragha\\OneDrive\\Documents\\wandb\\weave_export_hallucination_2025-04-11.csv")
+df = pd.read_csv("weave_export_hallucination_2025-04-11.csv")
 
 # --- Define column name mappings (same as before) ---
 precision_col = 'output.HalluScorerEvaluator.scorer_evaluation_metrics.precision'
@@ -14,7 +14,7 @@ recall_col = 'output.HalluScorerEvaluator.scorer_evaluation_metrics.recall'
 f1_col = 'output.HalluScorerEvaluator.scorer_evaluation_metrics.f1'
 accuracy_col = 'output.HalluScorerEvaluator.scorer_evaluation_metrics.accuracy'
 hallucination_rate_col = 'output.HalluScorerEvaluator.is_hallucination.true_fraction'
-latency_col = 'output.model_latency.mean'
+latency_col = 'output.model_latency.mekan'
 total_tokens_col = 'output.HalluScorerEvaluator.total_tokens.mean'
 display_name_col = 'display_name'
 model_name_col = 'attributes.model_name'
