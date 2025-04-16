@@ -15,6 +15,25 @@ This project provides a utility and a simple web application to analyze and visu
     pip install -r requirements.txt
     ```
 
+### W&B Authentication
+
+Before running the application, ensure you are authenticated with Weights & Biases. You have two primary options:
+
+1.  **Log in via CLI:** Run `wandb login` in your terminal before running `python speech_app.py`. This will prompt you for your API key (if not already configured) and store it locally.
+    ```bash
+    wandb login
+    ```
+2.  **Set Environment Variable:** Set the `WANDB_API_KEY` environment variable to your API key. The application will automatically use this key.
+    *   **PowerShell:**
+        ```powershell
+        $env:WANDB_API_KEY = 'YOUR_API_KEY'
+        ```
+    *   **Command Prompt:**
+        ```cmd
+        set WANDB_API_KEY=YOUR_API_KEY
+        ```
+    *(Replace `YOUR_API_KEY` with your actual W&B API key). You need to set this in the same terminal session where you run the script, or configure it as a system-wide environment variable.*
+
 ## Running the Application
 
 To launch the interactive web application, run the following command from the project's root directory:
