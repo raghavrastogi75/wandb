@@ -148,7 +148,7 @@ def load_dummy_dataframe(file_path=None):
     Returns:
         A pandas DataFrame, either loaded from the file or a dummy DataFrame.
     """
-    default_path = r"weave_export_hallucination_2025-04-11.csv" # CHECK/CHANGE PATH
+    default_path = r"data\weave_export_hallucination_2025-04-11.csv" # CHECK/CHANGE PATH
     load_path = file_path if file_path else default_path
     try:
         print(f"Attempting to load DataFrame from: {load_path}")

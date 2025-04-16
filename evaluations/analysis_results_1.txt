@@ -1,0 +1,387 @@
+--- Data Analysis Results ---
+------------------------------
+
+--- Answering User Questions ---
+
+Q: Describe the precision column.
+count    182.000000
+mean       0.538544
+std        0.085050
+min        0.000000
+25%        0.500681
+50%        0.531765
+75%        0.574816
+max        0.865772
+
+Q: Tell me about the recall metric.
+count    182.000000
+mean       0.583601
+std        0.229078
+min        0.000000
+25%        0.395540
+50%        0.613013
+75%        0.782609
+max        1.000000
+
+Q: Summarize the f1 score column.
+count    182.000000
+mean       0.528662
+std        0.125919
+min        0.000000
+25%        0.463776
+50%        0.563163
+75%        0.617818
+max        0.746032
+
+Q: Give me basic statistics for accuracy.
+count    182.000000
+mean       0.608883
+std        0.068827
+min        0.270000
+25%        0.578500
+50%        0.612750
+75%        0.638000
+max        0.808000
+
+Q: Describe mean model latency values.
+count    192.000000
+mean       3.803352
+std        6.777464
+min        0.250378
+25%        0.729877
+50%        1.699175
+75%        4.599030
+max       60.427952
+
+Q: What are the characteristics of the hallucination rate column?
+count    182.000000
+mean       0.457834
+std        0.208820
+min        0.000000
+25%        0.299250
+50%        0.464000
+75%        0.615375
+max        1.000000
+
+Q: Get information on the status column.
+ERROR: invalid syntax (<string>, line 1)
+
+Q: Provide info about the mean model latency data type.
+float64
+
+Q: What's the data type for the recall column?
+float64
+
+Q: Describe the accuracy column using percentiles.
+count    182.000000
+mean       0.608883
+std        0.068827
+min        0.270000
+25%        0.578500
+50%        0.612750
+75%        0.638000
+max        0.808000
+
+Q: Summarize the precision metric.
+count    182.000000
+mean       0.538544
+std        0.085050
+min        0.000000
+25%        0.500681
+50%        0.531765
+75%        0.574816
+max        0.865772
+
+Q: Basic statistics for recall.
+count    182.000000
+mean       0.583601
+std        0.229078
+min        0.000000
+25%        0.395540
+50%        0.613013
+75%        0.782609
+max        1.000000
+
+Q: What are the top 3 most frequent status values and their counts?
+summary.weave.status
+success    192
+running      3
+
+Q: Show the top 3 `summary.weave.attributes.os_name` values recorded and their counts.
+ERROR: 'summary.weave.attributes.os_name'
+
+Q: What are the top 3 `summary.weave.attributes.input_dataset_name` values used most often and their counts?
+ERROR: 'summary.weave.attributes.input_dataset_name'
+
+Q: Value counts for status, limit to 3.
+summary.weave.status
+success    192
+running      3
+
+Q: Top 3 most common values in `summary.weave.attributes.os_name`?
+ERROR: 'summary.weave.attributes.os_name'
+
+Q: Frequency count for the top 3 `summary.weave.attributes.input_dataset_name` values.
+ERROR: 'summary.weave.attributes.input_dataset_name'
+
+Q: Show the 3 most frequent status values and counts.
+summary.weave.status
+success    192
+running      3
+
+Q: What are the top 3 values and counts in the status column?
+summary.weave.status
+success    192
+running      3
+
+Q: What is the average precision per status?
+summary.weave.status
+running         NaN
+success    0.538544
+
+Q: Calculate the average recall for each status.
+summary.weave.status
+running         NaN
+success    0.583601
+
+Q: Average f1 score grouped by status?
+summary.weave.status
+running         NaN
+success    0.528662
+
+Q: What's the mean precision for each value in `summary.weave.attributes.os_name`?
+ERROR: 'summary.weave.attributes.os_name'
+
+Q: Calculate the average recall per `summary.weave.attributes.os_name`.
+ERROR: 'summary.weave.attributes.os_name'
+
+Q: Average f1 score grouped by `summary.weave.attributes.os_name`?
+ERROR: 'summary.weave.attributes.os_name'
+
+Q: What is the average precision per `summary.weave.attributes.input_dataset_name`?
+ERROR: 'summary.weave.attributes.input_dataset_name'
+
+Q: Calculate the mean recall for each `summary.weave.attributes.input_dataset_name`.
+ERROR: 'summary.weave.attributes.input_dataset_name'
+
+Q: Average f1 score grouped by `summary.weave.attributes.input_dataset_name`?
+ERROR: 'summary.weave.attributes.input_dataset_name'
+
+Q: Show mean precision based on the run status.
+summary.weave.status
+running         NaN
+success    0.538544
+
+Q: Average recall by `summary.weave.attributes.os_name`?
+ERROR: 'summary.weave.attributes.os_name'
+
+Q: Average f1 score by `summary.weave.attributes.input_dataset_name`?
+ERROR: 'summary.weave.attributes.input_dataset_name'
+
+Q: Group by status and find average precision.
+summary.weave.status
+running         NaN
+success    0.538544
+
+Q: Group by `summary.weave.attributes.os_name` and calculate mean recall.
+ERROR: 'summary.weave.attributes.os_name'
+
+Q: Group by `summary.weave.attributes.input_dataset_name` and show average f1 score.
+ERROR: 'summary.weave.attributes.input_dataset_name'
+
+Q: What's the average recall for 'success' status runs?
+0.5836005505371176
+
+Q: Mean precision for runs where `summary.weave.attributes.os_name` is 'Linux'?
+ERROR: 'summary.weave.attributes.os_name'
+
+Q: Average f1 score for runs using the 'RAGTruth-processed_finqa-data-processed-hallucination' dataset? (Using `summary.weave.attributes.input_dataset_name`)
+ERROR: 'summary.weave.attributes.input_dataset_name'
+
+Q: Group by status, calculate average recall.
+summary.weave.status
+running         NaN
+success    0.583601
+
+Q: Group by `summary.weave.attributes.os_name`, calculate average precision.
+ERROR: 'summary.weave.attributes.os_name'
+
+Q: What are the top 5 precision scores?
+24     0.865772
+22     0.854545
+180    0.820097
+124    0.754630
+183    0.730594
+
+Q: What are the bottom 3 recall scores?
+102    0.000000
+35     0.112676
+37     0.150235
+
+Q: What are the top 5 f1 scores?
+22     0.746032
+24     0.712707
+145    0.698730
+161    0.693727
+53     0.678439
+
+Q: What are the 5 lowest accuracy scores?
+159    0.2700
+89     0.4245
+97     0.4285
+91     0.4475
+45     0.4520
+
+Q: What are the 3 lowest mean model latency values?
+161    0.250378
+148    0.452846
+137    0.615673
+
+Q: What are the 5 highest mean model latency values?
+160    60.427952
+22     49.580924
+24     32.651341
+54     30.467506
+147    25.434211
+
+Q: What is the highest precision score?
+0.8657718120805369
+
+Q: What is the lowest recall score?
+0.0
+
+Q: What is the highest f1 score?
+0.7460317460317459
+
+Q: What is the lowest accuracy score?
+0.27
+
+Q: What is the minimum mean model latency value?
+0.2503775139208193
+
+Q: What is the maximum mean model latency value?
+60.42795167437306
+
+Q: What are the top 2 recall scores?
+159    1.000000
+89     0.998815
+
+Q: What are the bottom 4 precision scores?
+102    0.000000
+159    0.270000
+100    0.381818
+101    0.381818
+
+Q: What are the top 5 f1 scores recorded?
+22     0.746032
+24     0.712707
+145    0.698730
+161    0.693727
+53     0.678439
+
+Q: What are the bottom 2 mean model latency values?
+161    0.250378
+148    0.452846
+
+Q: What is the highest accuracy score achieved?
+0.808
+
+Q: What are the 3 highest mean model latency values observed?
+160    60.427952
+22     49.580924
+24     32.651341
+
+Q: What are the top 4 recall scores?
+159    1.000000
+89     0.998815
+97     0.995261
+91     0.970379
+
+Q: What are the bottom 5 f1 scores?
+102    0.000000
+35     0.184261
+37     0.238806
+40     0.238806
+48     0.238806
+
+Q: Calculate the Pearson correlation between precision and recall.
+output.HalluScorerEvaluator.scorer_evaluation_metrics.precision  output.HalluScorerEvaluator.scorer_evaluation_metrics.recall
+output.HalluScorerEvaluator.scorer_evaluation_metrics.precision                                                          1.00000                                                      -0.20483
+output.HalluScorerEvaluator.scorer_evaluation_metrics.recall                                                            -0.20483                                                       1.00000
+
+Q: Calculate the Pearson correlation between f1 score and accuracy.
+output.HalluScorerEvaluator.scorer_evaluation_metrics.f1  output.HalluScorerEvaluator.scorer_evaluation_metrics.accuracy
+output.HalluScorerEvaluator.scorer_evaluation_metrics.f1                                                        1.000000                                                        0.245831
+output.HalluScorerEvaluator.scorer_evaluation_metrics.accuracy                                                  0.245831                                                        1.000000
+
+Q: Calculate the Pearson correlation between mean model latency and precision score.
+output.model_latency.mean  output.HalluScorerEvaluator.scorer_evaluation_metrics.precision
+output.model_latency.mean                                                         1.000000                                                         0.283875
+output.HalluScorerEvaluator.scorer_evaluation_metrics.precision                   0.283875                                                         1.000000
+
+Q: Calculate the Spearman correlation between recall and f1 score.
+output.HalluScorerEvaluator.scorer_evaluation_metrics.recall  output.HalluScorerEvaluator.scorer_evaluation_metrics.f1
+output.HalluScorerEvaluator.scorer_evaluation_metrics.recall                                                      1.000000                                                  0.860682
+output.HalluScorerEvaluator.scorer_evaluation_metrics.f1                                                          0.860682                                                  1.000000
+
+Q: Calculate the Kendall correlation between accuracy and precision.
+output.HalluScorerEvaluator.scorer_evaluation_metrics.accuracy  output.HalluScorerEvaluator.scorer_evaluation_metrics.precision
+output.HalluScorerEvaluator.scorer_evaluation_metrics.accuracy                                                         1.000000                                                         0.671312
+output.HalluScorerEvaluator.scorer_evaluation_metrics.precision                                                        0.671312                                                         1.000000
+
+Q: Calculate the Pearson correlation for mean model latency and recall.
+output.model_latency.mean  output.HalluScorerEvaluator.scorer_evaluation_metrics.recall
+output.model_latency.mean                                                      1.000000                                                      0.102179
+output.HalluScorerEvaluator.scorer_evaluation_metrics.recall                   0.102179                                                      1.000000
+
+Q: Calculate the Pearson correlation between precision and f1 score.
+output.HalluScorerEvaluator.scorer_evaluation_metrics.precision  output.HalluScorerEvaluator.scorer_evaluation_metrics.f1
+output.HalluScorerEvaluator.scorer_evaluation_metrics.precision                                                         1.000000                                                  0.157214
+output.HalluScorerEvaluator.scorer_evaluation_metrics.f1                                                                0.157214                                                  1.000000
+
+Q: Calculate the Pearson correlation between accuracy and recall.
+output.HalluScorerEvaluator.scorer_evaluation_metrics.accuracy  output.HalluScorerEvaluator.scorer_evaluation_metrics.recall
+output.HalluScorerEvaluator.scorer_evaluation_metrics.accuracy                                                        1.000000                                                     -0.111705
+output.HalluScorerEvaluator.scorer_evaluation_metrics.recall                                                         -0.111705                                                      1.000000
+
+Q: Calculate the Pearson correlation between mean model latency and f1 score.
+output.model_latency.mean  output.HalluScorerEvaluator.scorer_evaluation_metrics.f1
+output.model_latency.mean                                                  1.000000                                                  0.204847
+output.HalluScorerEvaluator.scorer_evaluation_metrics.f1                   0.204847                                                  1.000000
+
+Q: Calculate the Pearson correlation between precision and accuracy.
+output.HalluScorerEvaluator.scorer_evaluation_metrics.precision  output.HalluScorerEvaluator.scorer_evaluation_metrics.accuracy
+output.HalluScorerEvaluator.scorer_evaluation_metrics.precision                                                          1.00000                                                         0.67864
+output.HalluScorerEvaluator.scorer_evaluation_metrics.accuracy                                                           0.67864                                                         1.00000
+
+Q: How many runs have status 'success'?
+192
+
+Q: How many runs have precision greater than 0.75?
+4
+
+Q: List the id for the first 5 runs found with recall less than 0.2.
+['0193a779-d06a-72a1-82df-08bba7a37041', '0193a5f4-c475-7b73-a4e5-433b660df20e', '0193a5ed-d321-7f00-a002-d079ee2d138f', '0193a5e9-0e5d-7832-9651-34e8f55ab433', '0193a5e4-f02d-7631-91c5-ce57f2fd45a5']
+
+Q: What is the average mean model latency for runs with f1 score > 0.65?
+9.762909201518518
+
+Q: How many runs have mean model latency below 1.5 seconds?
+85
+
+Q: What is the minimum precision found in runs with accuracy >= 0.6?
+0.0
+
+Q: Count runs with a hallucination rate of 0.
+1
+
+Q: List the id for runs with status 'running'.
+['0193863b-7963-7e03-a8c4-047c37ef404a', '0193860e-871f-7453-90ca-e733a4ab306d', '019385f7-22c0-7422-b3eb-41542bd97954']
+
+Q: How many runs have precision < 0.25?
+1
+
+Q: List the id(s) where recall is exactly 1.0.
+['019384b3-3bf9-7062-82c0-bb9a4a4d781e']
+
+--- Analysis Complete ---

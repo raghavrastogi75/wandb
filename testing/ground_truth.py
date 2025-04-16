@@ -6,7 +6,7 @@ import contextlib # Import contextlib for redirecting stdout
 
 
 # Read the CSV data
-df = pd.read_csv("weave_export_hallucination_2025-04-11.csv")
+df = pd.read_csv("..\data\weave_export_hallucination_2025-04-11.csv")
 
 # --- Define column name mappings (same as before) ---
 precision_col = 'output.HalluScorerEvaluator.scorer_evaluation_metrics.precision'
