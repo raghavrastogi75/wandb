@@ -34,6 +34,21 @@ Before running the application, ensure you are authenticated with Weights & Bias
         ```
     *(Replace `YOUR_API_KEY` with your actual W&B API key). You need to set this in the same terminal session where you run the script, or configure it as a system-wide environment variable.*
 
+### OpenAI API Key
+
+If you intend to use features that interact with OpenAI models (e.g., for natural language query processing if implemented), you'll also need to configure your OpenAI API key. The application expects this key to be available as an environment variable.
+
+*   **Set Environment Variable:** Set the `OPENAI_API_KEY` environment variable to your API key.
+    *   **PowerShell:**
+        ```powershell
+        $env:OPENAI_API_KEY = 'YOUR_OPENAI_API_KEY'
+        ```
+    *   **Command Prompt:**
+        ```cmd
+        set OPENAI_API_KEY=YOUR_OPENAI_API_KEY
+        ```
+    *(Replace `YOUR_OPENAI_API_KEY` with your actual OpenAI API key). Similar to the W&B key, set this in your current terminal session or system-wide.*
+
 ## Running the Application
 
 To launch the interactive web application, run the following command from the project's root directory:
