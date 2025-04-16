@@ -24,3 +24,4 @@ textual
 # --- Networking ---
 websockets
 weave
+python-multipart
