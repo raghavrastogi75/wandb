@@ -1,4 +1,4 @@
-# Speech Model Evaluation Data Explorer
+# Speech enabled data explorer
 
 This project provides a utility and a simple application to query a dataframe and ask complex questions that listed below. It uses a realtime speech to speech model to generate answers
 
