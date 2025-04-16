@@ -1,6 +1,6 @@
 # Speech Model Evaluation Data Explorer
 
-This project provides a utility and a simple web application to analyze and visualize speech recognition model evaluation data, focusing on metrics like performance scores (F1, precision, recall, accuracy), latency, and hallucination detection.
+This project provides a utility and a simple application to query a dataframe and ask complex questions that listed below. It uses a realtime speech to speech model to generate answers
 
 ## Installation
 
